@@ -3,31 +3,26 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>皮克敏收藏地圖 - 極簡版</title>
+    <title>皮克敏收藏地圖 - 穩定簡潔版</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" />
     <style>
-        /* 極簡風格 CSS */
-        html, body { margin: 0; padding: 0; height: 100%; width: 100%; font-family: -apple-system, sans-serif; }
-        #map { height: 100vh; width: 100%; background: #f0f0f0; }
-        .popup-form { display: flex; flex-direction: column; gap: 12px; min-width: 250px; padding: 5px; }
-        input[type="text"] { padding: 8px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; }
+        html, body { margin: 0; padding: 0; height: 100%; width: 100%; font-family: -apple-system, "Microsoft JhengHei", sans-serif; }
+        #map { height: 100vh; width: 100%; background: #ffffff; }
+        .popup-form { display: flex; flex-direction: column; gap: 10px; min-width: 240px; padding: 5px; }
+        input[type="text"] { padding: 10px; border: 1px solid #ddd; border-radius: 8px; outline: none; }
         
-        /* 手機貼上區 (增強版) */
+        /* 貼上照片區 */
         #paste-area { 
-            width: 100%; height: 100px; border: 2px dashed #aaa; 
-            text-align: center; line-height: 100px; color: #888; 
-            cursor: pointer; border-radius: 8px; font-size: 14px;
+            width: 100%; height: 90px; border: 2px dashed #bbb; 
+            display: flex; align-items: center; justify-content: center;
+            color: #888; cursor: pointer; border-radius: 10px; background: #fafafa;
         }
-        #paste-area.has-image { border: 2px solid #4CAF50; color: #4CAF50; background: #e8f5e9; }
-        #preview { width: 100%; display: none; margin-top: 5px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        #paste-area.active { border-color: #4CAF50; color: #4CAF50; background: #f1f8e9; }
+        #preview { width: 100%; display: none; margin-top: 5px; border-radius: 10px; border: 1px solid #eee; }
         
-        /* 分類按鈕 */
-        .category-group { display: flex; gap: 8px; flex-wrap: wrap; }
-        .cat-btn { padding: 6px 12px; border: 1px solid #ddd; border-radius: 15px; background: white; font-size: 12px; cursor: pointer; }
-        .cat-btn.active { background: #333; color: white; border-color: #333; }
-        
-        /* 儲存按鈕 */
-        button#save-btn { background: #333; color: white; border: none; padding: 10px; border-radius: 8px; font-size: 16px; cursor: pointer; }
+        /* 按鈕風格 */
+        .btn-save { background: #1a73e8; color: white; border: none; padding: 12px; border-radius: 8px; font-weight: bold; cursor: pointer; }
+        .btn-save:active { background: #174ea6; }
     </style>
 </head>
 <body>
@@ -41,99 +36,65 @@
         const SUPABASE_KEY = 'sb_publishable_NtNOyy79dVCQVO4H0qGQbw_-Cbdz3Qc';
         const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-        // 初始化地圖 (使用 Jawg Light 極簡底圖)
+        // ✅ 換成穩定、免費、極簡的 CartoDB Positron 底圖 (這張最像 Google Maps)
         const map = L.map('map').setView([25.033, 121.565], 13);
-        
-        // ❌ 換掉舊的、很醜的底圖
-        // ✅ 換成類似 Google Maps 的極簡底圖 (Jawg Light)
-        L.tileLayer('https://{s}.tile.jawg.io/jawg-light/{z}/{x}/{y}{r}.png?access-token=fT38H39UuC9j8xN4b6s1u8L3A8jA1G3s', {
-            attribution: '© Jawg Maps / © OpenStreetMap contributors'
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+            attribution: '© OpenStreetMap'
         }).addTo(map);
 
-        let tempImageData = ""; // 用來存照片
-        let selectedCategory = "花景"; // 預設分類
+        let tempImageData = "";
 
-        // 讀取點位
         async function load() {
             const { data } = await _supabase.from('postcards').select('*');
             if (data) {
                 data.forEach(p => {
                     L.marker([p.lat, p.lng]).addTo(map)
-                     .bindPopup(`<b>${p.title}</b><br><span style="color:#666; font-size:12px;">分類：${p.category || '花景'}</span><br><img src="${p.image_url}" style="width:100%; border-radius:8px;">`);
+                     .bindPopup(`<b>${p.title}</b><br><img src="${p.image_url}" style="width:100%; margin-top:5px; border-radius:5px;">`);
                 });
             }
         }
         load();
 
-        // 點擊地圖彈出新增視窗
         map.on('click', function(e) {
             tempImageData = ""; 
             const popupContent = `
                 <div class="popup-form">
-                    <input type="text" id="p-title" placeholder="地點名稱 (如: 柳營家花園)">
-                    <div class="category-group">
-                        <span class="cat-btn active" onclick="selectCat(this)">花景</span>
-                        <span class="cat-btn" onclick="selectCat(this)">風景</span>
-                        <span class="cat-btn" onclick="selectCat(this)">建築</span>
-                        <span class="cat-btn" onclick="selectCat(this)">雪景</span>
-                    </div>
-                    <div id="paste-area" onclick="requestPaste()" title="點一下貼上手機相簿照片">點一下此處貼上照片</div>
+                    <input type="text" id="p-title" placeholder="這是哪裡？(例：柳營路邊花叢)">
+                    <div id="paste-area" onclick="this.focus();" contenteditable="true">長按此處貼上照片</div>
                     <img id="preview">
-                    <button id="save-btn" onclick="saveData(${e.latlng.lat}, ${e.latlng.lng})">儲存標記</button>
+                    <button class="btn-save" onclick="saveData(${e.latlng.lat}, ${e.latlng.lng})">確認儲存</button>
                 </div>
             `;
             L.popup().setLatLng(e.latlng).setContent(popupContent).openOn(map);
 
-            // 監聽貼上動作 (優化版)
             setTimeout(() => {
                 const area = document.getElementById('paste-area');
-                area.addEventListener('paste', handlePaste);
+                area.addEventListener('paste', (event) => {
+                    const items = (event.clipboardData || event.originalEvent.clipboardData).items;
+                    for (let item of items) {
+                        if (item.type.indexOf("image") !== -1) {
+                            const blob = item.getAsFile();
+                            const reader = new FileReader();
+                            reader.onload = function(e) {
+                                tempImageData = e.target.result;
+                                area.innerText = "照片讀取成功！";
+                                area.classList.add('active');
+                                document.getElementById('preview').src = tempImageData;
+                                document.getElementById('preview').style.display = 'block';
+                            };
+                            reader.readAsDataURL(blob);
+                        }
+                    }
+                });
             }, 500);
         });
 
-        // 處理手機貼上照片 (修正貼上不靈敏問題)
-        function handlePaste(event) {
-            const items = (event.clipboardData || event.originalEvent.clipboardData).items;
-            let foundImage = false;
-            for (let item of items) {
-                if (item.type.indexOf("image") !== -1) {
-                    foundImage = true;
-                    const blob = item.getAsFile();
-                    const reader = new FileReader();
-                    reader.onload = function(e) {
-                        tempImageData = e.target.result;
-                        const area = document.getElementById('paste-area');
-                        area.classList.add('has-image');
-                        area.innerText = "照片已就緒！";
-                        document.getElementById('preview').src = tempImageData;
-                        document.getElementById('preview').style.display = 'block';
-                    };
-                    reader.readAsDataURL(blob);
-                }
-            }
-            if (!foundImage) alert("貼上失敗：請確認你剛才從相簿複製的是照片！");
-        }
-
-        // 手機上主動請求貼上 (增強相容性)
-        function requestPaste() {
-            // 在某些手機上，點擊後會彈出瀏覽器貼上請求
-            document.execCommand('paste');
-        }
-
-        // 分類選擇器
-        function selectCat(btn) {
-            document.querySelectorAll('.cat-btn').forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
-            selectedCategory = btn.innerText;
-        }
-
-        // 存入資料庫
         async function saveData(lat, lng) {
             const title = document.getElementById('p-title').value || "未命名地點";
-            if (!tempImageData) return alert("請先貼上照片！");
+            if (!tempImageData) return alert("請先複製照片再貼上來！");
 
             const { error } = await _supabase.from('postcards').insert([
-                { title: title, lat: lat, lng: lng, image_url: tempImageData, category: selectedCategory }
+                { title, lat, lng, image_url: tempImageData }
             ]);
 
             if (error) alert("儲存失敗: " + error.message);
