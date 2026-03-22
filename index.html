@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>皮克敏收藏地圖 - 除錯加強版</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        /* 強制撐開地圖，預防全白 */
+        html, body { margin: 0; padding: 0; height: 100%; width: 100%; }
+        #map { height: 100vh; width: 100%; background: #f0f0f0; }
+        .error-msg { position: fixed; top: 10px; left: 10px; z-index: 1000; background: red; color: white; padding: 10px; display: none; }
+    </style>
+</head>
+<body>
+    <div id="error-box" class="error-msg"></div>
+    <div id="map"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+    <script>
+        // 顯示錯誤工具
+        function showError(msg) {
+            const box = document.getElementById('error-box');
+            box.style.display = 'block';
+            box.innerText = "⚠️ 偵測到錯誤: " + msg;
+            console.error(msg);
+        }
+
+        // 1. 檢查套件是否載入
+        if (typeof L === 'undefined') showError("地圖工具 (Leaflet) 載入失敗，請檢查網路！");
+        if (typeof supabase === 'undefined') showError("資料庫工具 (Supabase) 載入失敗！");
+
+        // 2. 連線設定
+        const SUPABASE_URL = 'https://emukablggtnchocpnoiu.supabase.co';
+        const SUPABASE_KEY = 'sb_publishable_NtNOyy79dVCQVO4H0qGQbw_-Cbdz3Qc';
+        const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+        // 3. 初始化地圖 (預設座標)
+        const map = L.map('map').setView([25.033, 121.565], 13);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap'
+        }).addTo(map);
+
+        // 4. 讀取點位
+        async function load() {
+            try {
+                const { data, error } = await _supabase.from('postcards').select('*');
+                if (error) {
+                    showError("資料庫讀取失敗: " + error.message);
+                } else if (data) {
+                    data.forEach(p => {
+                        L.marker([p.lat, p.lng])
+                         .addTo(map)
+                         .bindPopup(`<b>${p.title || '未命名'}</b><br><img src="${p.image_url || 'https://via.placeholder.com/150'}" style="width:100%">`);
+                    });
+                }
+            } catch (e) {
+                showError("程式執行發生問題: " + e.message);
+            }
+        }
+        
+        // 啟動讀取
+        load();
+
+        // 5. 點擊地圖新增
+        map.on('click', function(e) {
+            const title = prompt("請輸入地點名稱（如：柳營家門口）：");
+            if(title) {
+                save(title, e.latlng.lat, e.latlng.lng);
+            }
+        });
+
+        // 6. 儲存點位
+        async function save(title, lat, lng) {
+            try {
+                const { error } = await _supabase.from('postcards').insert([
+                    { title: title, lat: lat, lng: lng, image_url: 'https://via.placeholder.com/150' }
+                ]);
+                
+                if (error) {
+                    alert("儲存失敗，請檢查 Supabase 的 RLS 是否關閉！\n錯誤訊息：" + error.message);
+                } else {
+                    alert("儲存成功！");
+                    location.reload();
+                }
+            } catch (e) {
+                alert("儲存程式出錯：" + e.message);
+            }
+        }
+    </script>
+</body>
+</html>
